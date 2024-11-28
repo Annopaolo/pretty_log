@@ -20,14 +20,25 @@ defmodule PrettyLog.UserFriendlyFormatter do
   alias Logger.Formatter
   alias PrettyLog.TextSanitizer
 
+  epoch = {{1970, 1, 1}, {0, 0, 0}}
+  @epoch :calendar.datetime_to_gregorian_seconds(epoch)
+
   def format(level, message, timestamp, metadata) do
-    {_date, {h, m, s, millis}} = timestamp
+    {date, {h, m, s, millis}} = timestamp
 
     pre_message_metadata = Application.get_env(:logfmt, :prepend_metadata, [])
 
     {pre_meta, metadata} = Keyword.split(metadata, pre_message_metadata)
 
-    time_string = "#{to_string(h)}:#{to_string(m)}:#{to_string(s)}.#{to_string(millis)}"
+    timestamp =
+      :erlang.localtime_to_universaltime({date, {h, m, s}})
+      |> :calendar.datetime_to_gregorian_seconds()
+      |> Kernel.-(@epoch)
+
+    timestamp_string =
+      (timestamp * 1000 + millis)
+      |> :calendar.system_time_to_rfc3339(unit: :millisecond)
+      |> to_string()
 
     level_string =
       level
@@ -47,9 +58,9 @@ defmodule PrettyLog.UserFriendlyFormatter do
       |> Logfmt.encode(output: :iolist)
 
     if encoded_metadata != [] do
-      [time_string, "\t|", level_string, "| ", sanitized_message, "  ", encoded_metadata, ?\n]
+      [timestamp_string, "\t|", level_string, "| ", sanitized_message, "  ", encoded_metadata, ?\n]
     else
-      [time_string, "\t|", level_string, "| ", sanitized_message, ?\n]
+      [timestamp_string, "\t|", level_string, "| ", sanitized_message, ?\n]
     end
   rescue
     _ -> "LOG_FORMATTER_ERROR: #{inspect({level, message, timestamp, metadata})}\n"
